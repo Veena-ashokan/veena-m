@@ -1,0 +1,468 @@
+#include <HardwareSerial.h>
+
+#define HC12_TX 17  // ESP32 TX to HC12 RX
+#define HC12_RX 16  // ESP32 RX to HC12 TX
+
+HardwareSerial HC12(2);  // Use UART2 for HC12
+
+const uint8_t DEVICE_ID = 0x01;  // Unique ID for this ESP32
+
+void setup() {
+    Serial.begin(115200);  // Initialize Serial Monitor
+    HC12.begin(9600, SERIAL_8N1, HC12_RX, HC12_TX);  // Initialize HC12 UART2
+  
+    Serial.println("HC-12 Receiver Ready...");
+    delay(500);
+}
+
+void loop() {
+  int size =HC12.available();
+    if (size >= 8) {  // Wait for a full packet (9 bytes)
+        uint8_t packet[8];
+        HC12.readBytes(packet, 8);  // Read the full packet
+
+        // Validate packet structure (Prefix: 0xAA 0x55, Suffix: 0x55 0xAA)
+        if (packet[0] == 0xAA && packet[1] == 0x55 && packet[6] == 0x55 && packet[7] == 0xAA) {
+            uint8_t senderID = packet[2];
+
+            // Check if the message is meant for this ESP32
+            if (senderID == DEVICE_ID) {
+                uint8_t flags = packet[3];
+                uint8_t temp_msb = packet[4];
+                uint8_t temp_lsb = packet[5];
+                float temperature = (temp_msb << 8 | temp_lsb)/10.0;
+
+               Serial.printf("DATA:%d,%d,%f:END\n", senderID, flags,temperature );
+               // Serial.printf("Received from ID Flags=%d\n| ADC1=%d| ADC2=%d|\n",flags, adc1,adc2);//, adc2);
+            } else {
+               Serial.printf("Ignored packet for ID=%X\n", senderID);
+            }
+        }
+        else {
+            Serial.println("Invalid packet received!");
+        }
+    }
+    else{
+        Serial.printf("Ignored..............%d............\n",size);
+            }
+delay(300);
+}
+
+
+// Pin Definitions
+const int analogPin = A0;  // MQ4 Analog Output
+const int heaterPin = 2;   // Heater Control Pin (if applicable)
+
+// Methane Gas Thresholds (in ppm - adjust based on calibration)
+const float safeThreshold = 200.0;  // Below this is safe
+const float toxicThreshold = 400.0; // Above this is toxic
+
+// Variables for Sensor Calibration (adjust based on your setup and datasheet)
+const float sensorVoltageReference = 5.0;  // Reference voltage for Arduino
+const float sensorMaxPPM = 5000.0;         // Maximum PPM sensor can read
+const float sensorMaxVoltage = 4.0;        // Maximum voltage sensor outputs at max concentration
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(heaterPin, OUTPUT); // Optional: Set up the heater pin
+  digitalWrite(heaterPin, HIGH); // Turn on the heater (if required)
+  Serial.println("MQ4 Methane Gas Detection Initialized...");
+}
+
+void loop() {
+  // Read Sensor Value
+  int sensorValue = analogRead(analogPin); // Read analog voltage
+  float voltage = sensorValue * (sensorVoltageReference / 1023.0); // Convert to voltage
+  float ppm = (voltage / sensorMaxVoltage) * sensorMaxPPM; // Approximate PPM
+
+  // Determine Safety Status
+  String status;
+  if (ppm <= safeThreshold) {
+    status = "Safe";
+  } else if (ppm > toxicThreshold) {
+    status = "Unsafe";
+  } else {
+    status = "Warning: High Levels";
+  }
+
+  // Display Results
+  Serial.print("Methane Concentration: ");
+  Serial.print(ppm);
+  Serial.print(" ppm - Status: ");
+  Serial.println(status);
+
+  // Delay for stability
+  delay(1000);
+}
+
+// Define pin for MQ-7 analog output
+const int mq7Pin = A0;
+
+// Define thresholds for CO levels (in ppm)
+const int safeThreshold = 40;    // Safe CO level threshold
+const int warningThreshold = 42; // Warning CO level threshold
+const int unsafeThreshold = 45; // Unsafe CO level threshold
+
+void setup() {
+  Serial.begin(9600);  // Start serial communication
+  pinMode(mq7Pin, INPUT);
+}
+
+void loop() {
+  int sensorValue = analogRead(mq7Pin); // Read analog value from MQ-7
+  float voltage = sensorValue * (5.0 / 1023.0); // Convert to voltage
+  float coPPM = map(sensorValue, 0, 1023, 0, 1000); // Estimate CO PPM (adjust mapping based on calibration)
+
+  // Display the CO concentration
+  Serial.print("CO Concentration: ");
+  Serial.print(coPPM);
+  Serial.println(" ppm");
+
+  // Determine condition based on CO levels
+  if (coPPM <= safeThreshold) {
+    Serial.println("Condition: Safe");
+  } else if (coPPM > safeThreshold && coPPM <= warningThreshold) {
+    Serial.println("Condition: Warning");
+  } else if (coPPM > warningThreshold) {
+    Serial.println("Condition: Unsafe");
+  }
+
+  delay(1000); // Wait 1 second before the next reading
+}
+
+#include<DHT.h>
+
+// Pin Definitions
+#define DHTPIN 2        // DHT11 data pin connected to digital pin 2
+#define DHTTYPE DHT11   // DHT11 sensor type
+
+DHT dht(DHTPIN, DHTTYPE); // Initialize DHT sensor
+
+// Thresholds (adjust as needed)
+const float tempSafeThreshold = 30.0;    // Safe temperature (Celsius)
+const float tempToxicThreshold = 35.0;  // Unsafe temperature (Celsius)
+const float humiditySafeThreshold = 60.0;   // Safe humidity (%)
+const float humidityToxicThreshold = 80.0;  // Unsafe humidity (%)
+
+void setup() {
+  Serial.begin(9600);
+  dht.begin();
+  Serial.println("DHT11 Temperature and Humidity Monitor Initialized...");
+}
+
+void loop() {
+  // Read Temperature and Humidity
+  float temperature = dht.readTemperature(); // Read temperature in Celsius
+  float humidity = dht.readHumidity();       // Read humidity in percentage
+
+  // Check if readings are valid
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("Failed to read from DHT sensor!");
+    delay(2000); // Wait and retry
+    return;
+  }
+
+  // Determine Safety Status
+  String tempStatus;
+  String humidityStatus;
+
+  // Temperature Status
+  if (temperature <= tempSafeThreshold) {
+    tempStatus = "Safe";
+  } else if (temperature > tempToxicThreshold) {
+    tempStatus = "Unsafe";
+  } else {
+    tempStatus = "Warning: High Temp";
+  }
+
+  // Humidity Status
+  if (humidity <= humiditySafeThreshold) {
+    humidityStatus = "Safe";
+  } else if (humidity > humidityToxicThreshold) {
+    humidityStatus = "Unsafe";
+  } else {
+    humidityStatus = "Warning: High Humidity";
+  }
+
+  // Display Results
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.print(" C - Status: ");
+  Serial.println(tempStatus);
+
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.print(" % - Status: ");
+  Serial.println(humidityStatus);
+
+  Serial.println("---------------------------");
+
+  // Delay for stability
+  delay(2000);
+}
+
+// Pin Definitions
+const int piezoPin = A0;  // Piezoelectric Force Sensor Analog Output
+
+// Force Thresholds (adjust based on calibration and use case)
+const float safeMaxForce = 3.0;  // Safe maximum force in Newtons
+const float unsafeForce = 5.0;  // Unsafe force in Newtons
+
+// Sensor Calibration Constants (adjust based on your setup and datasheet)
+const float voltageReference = 5.0;  // Arduino reference voltage
+const int adcResolution = 1023;      // ADC resolution (10-bit for Arduino Uno)
+const float sensitivity = 0.05;      // Sensor sensitivity in V/N (volts per Newton)
+
+// Variables for Sensor Readings
+float force = 0.0;  // Calculated force in Newtons
+bool sensorError = false;  // Tracks if there is an error with the sensor
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(piezoPin, INPUT);
+  Serial.println("Piezoelectric Force Sensor Initialized...");
+}
+
+void loop() {
+  // Read Sensor Value
+  int sensorValue = analogRead(piezoPin);
+
+  // Error Handling: Check for invalid sensor values
+  if (sensorValue < 0 || sensorValue > adcResolution) {
+    sensorError = true;
+    Serial.println("Error: Invalid sensor reading! Check connections.");
+    delay(2000); // Wait before retrying
+    return;
+  } else {
+    sensorError = false; // No error
+  }
+
+  // Convert Analog Value to Voltage
+  float voltage = (sensorValue * voltageReference) / adcResolution;
+
+  // Calculate Force in Newtons
+  force = voltage / sensitivity;
+
+  // Determine Safety Status
+  String status;
+  if (force <= safeMaxForce) {
+    status = "Safe";
+  } else if (force > unsafeForce) {
+    status = "Unsafe";
+  } else {
+    status = "Warning: High Force";
+  }
+
+  // Display Results
+  Serial.print("Force: ");
+  Serial.print(force);
+  Serial.print(" N - Status: ");
+  Serial.println(status);
+
+  
+}
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+int pulsePin = A0;                 // Pulse Sensor purple wire connected to analog pin A0
+int blinkPin = 13;                // pin to blink led at each beat
+
+// Volatile Variables, used in the interrupt service routine!
+volatile int BPM;                   // int that holds raw Analog in 0. updated every 2mS
+volatile int Signal;                // holds the incoming raw data
+volatile int IBI = 600;             // int that holds the time interval between beats! Must be seeded! 
+volatile boolean Pulse = false;     // "True" when User's live heartbeat is detected. "False" when not a "live beat". 
+volatile boolean QS = false;        // becomes true when Arduoino finds a beat.
+
+static boolean serialVisual = true;   // Set to 'false' by Default.  Re-set to 'true' to see Arduino Serial Monitor ASCII Visual Pulse 
+
+volatile int rate[10];                      // array to hold last ten IBI values
+volatile unsigned long sampleCounter = 0;          // used to determine pulse timing
+volatile unsigned long lastBeatTime = 0;           // used to find IBI
+volatile int P = 512;                      // used to find peak in pulse wave, seeded
+volatile int T = 512;                     // used to find trough in pulse wave, seeded
+volatile int thresh = 525;                // used to find instant moment of heart beat, seeded
+volatile int amp = 100;                   // used to hold amplitude of pulse waveform, seeded
+volatile boolean firstBeat = true;        // used to seed rate array so we startup with reasonable BPM
+volatile boolean secondBeat = false;      // used to seed rate array so we startup with reasonable BPM
+ 
+void setup()
+{
+ 
+  Serial.begin(115200);    
+  // we agree to talk fast!
+  interruptSetup();                 // sets up to read Pulse Sensor signal every 2mS 
+                                    // IF YOU ARE POWERING The Pulse Sensor AT VOLTAGE LESS THAN THE BOARD VOLTAGE, 
+                                    // UN-COMMENT THE NEXT LINE AND APPLY THAT VOLTAGE TO THE A-REF PIN
+                                    //   analogReference(EXTERNAL);   
+ lcd.begin(16,2); 
+
+}
+
+
+//  Where the Magic Happens
+void loop()
+{
+   serialOutput();  
+   
+  if (QS == true) // A Heartbeat Was Found
+    {     
+      // BPM and IBI have been Determined
+      // Quantified Self "QS" true when arduino finds a heartbeat
+      serialOutputWhenBeatHappens(); // A Beat Happened, Output that to serial.     
+      QS = false; // reset the Quantified Self flag for next time    
+    }
+     
+  delay(20); //  take a break
+}
+
+
+void interruptSetup()
+{     
+  // Initializes Timer2 to throw an interrupt every 2mS.
+  TCCR2A = 0x02;     // DISABLE PWM ON DIGITAL PINS 3 AND 11, AND GO INTO CTC MODE
+  TCCR2B = 0x06;     // DON'T FORCE COMPARE, 256 PRESCALER 
+  OCR2A = 0X7C;      // SET THE TOP OF THE COUNT TO 124 FOR 500Hz SAMPLE RATE
+  TIMSK2 = 0x02;     // ENABLE INTERRUPT ON MATCH BETWEEN TIMER2 AND OCR2A
+  sei();             // MAKE SURE GLOBAL INTERRUPTS ARE ENABLED      
+} 
+
+void serialOutput()
+{   // Decide How To Output Serial. 
+ if (serialVisual == true)
+  {  
+     arduinoSerialMonitorVisual('-', Signal);   // goes to function that makes Serial Monitor Visualizer
+  } 
+ else
+  {
+      sendDataToSerial('S', Signal);     // goes to sendDataToSerial function
+   }        
+}
+
+void serialOutputWhenBeatHappens()
+{    
+ if (serialVisual == true) //  Code to Make the Serial Monitor Visualizer Work
+   {   lcd.setCursor(0,0);         
+     Serial.print(" Heart-Beat Found ");  //ASCII Art Madness
+     Serial.print("BPM: ");
+     Serial.println(BPM);
+     lcd.print("Heart-Beat Found  ");
+     lcd.setCursor(1,1);
+     lcd.print("BPM: ");
+     lcd.setCursor(5,1);
+     lcd.print(BPM);
+     delay(300);
+     
+    lcd.clear();
+     
+   }
+ else
+   {
+     sendDataToSerial('B',BPM);   // send heart rate with a 'B' prefix
+     sendDataToSerial('Q',IBI);   // send time between beats with a 'Q' prefix
+   }   
+}
+
+void arduinoSerialMonitorVisual(char symbol, int data )
+{    
+  const int sensorMin = 0;      // sensor minimum, discovered through experiment
+  const int sensorMax = 1024;    // sensor maximum, discovered through experiment
+  int sensorReading = data; // map the sensor range to a range of 12 options:
+  int range = map(sensorReading, sensorMin, sensorMax, 0, 11);
+  // do something different depending on the 
+  // range value:
+}
+
+
+void sendDataToSerial(char symbol, int data )
+{
+   Serial.print(symbol);
+   Serial.println(data);                
+}
+
+ISR(TIMER2_COMPA_vect) //triggered when Timer2 counts to 124
+{  
+  cli();                                      // disable interrupts while we do this
+  Signal = analogRead(pulsePin);              // read the Pulse Sensor 
+  sampleCounter += 2;                         // keep track of the time in mS with this variable
+  int N = sampleCounter - lastBeatTime;       // monitor the time since the last beat to avoid noise
+                                              //  find the peak and trough of the pulse wave
+  if(Signal < thresh && N > (IBI/5)*3) // avoid dichrotic noise by waiting 3/5 of last IBI
+    {      
+      if (Signal < T) // T is the trough
+      {                        
+        T = Signal; // keep track of lowest point in pulse wave 
+      }
+    }
+
+  if(Signal > thresh && Signal > P)
+    {          // thresh condition helps avoid noise
+      P = Signal;                             // P is the peak
+    }                                        // keep track of highest point in pulse wave
+
+  //  NOW IT'S TIME TO LOOK FOR THE HEART BEAT
+  // signal surges up in value every time there is a pulse
+  if (N > 250)
+  {                                   // avoid high frequency noise
+    if ( (Signal > thresh) && (Pulse == false) && (N > (IBI/5)*3) )
+      {        
+        Pulse = true;                               // set the Pulse flag when we think there is a pulse
+        digitalWrite(blinkPin,HIGH);                // turn on pin 13 LED
+        IBI = sampleCounter - lastBeatTime;         // measure time between beats in mS
+        lastBeatTime = sampleCounter;               // keep track of time for next pulse
+  
+        if(secondBeat)
+        {                        // if this is the second beat, if secondBeat == TRUE
+          secondBeat = false;                  // clear secondBeat flag
+          for(int i=0; i<=9; i++) // seed the running total to get a realisitic BPM at startup
+          {             
+            rate[i] = IBI;                      
+          }
+        }
+  
+        if(firstBeat) // if it's the first time we found a beat, if firstBeat == TRUE
+        {                         
+          firstBeat = false;                   // clear firstBeat flag
+          secondBeat = true;                   // set the second beat flag
+          sei();                               // enable interrupts again
+          return;                              // IBI value is unreliable so discard it
+        }   
+      // keep a running total of the last 10 IBI values
+      word runningTotal = 0;                  // clear the runningTotal variable    
+
+      for(int i=0; i<=8; i++)
+        {                // shift data in the rate array
+          rate[i] = rate[i+1];                  // and drop the oldest IBI value 
+          runningTotal += rate[i];              // add up the 9 oldest IBI values
+        }
+
+      rate[9] = IBI;                          // add the latest IBI to the rate array
+      runningTotal += rate[9];                // add the latest IBI to runningTotal
+      runningTotal /= 10;                     // average the last 10 IBI values 
+      BPM = 60000/runningTotal;               // how many beats can fit into a minute? that's BPM!
+      QS = true;                              // set Quantified Self flag 
+      // QS FLAG IS NOT CLEARED INSIDE THIS ISR
+    }                       
+  }
+
+  if (Signal < thresh && Pulse == true)
+    {   // when the values are going down, the beat is over
+      digitalWrite(blinkPin,LOW);            // turn off pin 13 LED
+      Pulse = false;                         // reset the Pulse flag so we can do it again
+      amp = P - T;                           // get amplitude of the pulse wave
+      thresh = amp/2 + T;                    // set thresh at 50% of the amplitude
+      P = thresh;                            // reset these for next time
+      T = thresh;
+    }
+
+  if (N > 2500)
+    {                           // if 2.5 seconds go by without a beat
+      thresh = 512;                          // set thresh default
+      P = 512;                               // set P default
+      T = 512;                               // set T default
+      lastBeatTime = sampleCounter;          // bring the lastBeatTime up to date        
+      firstBeat = true;                      // set these to avoid noise
+      secondBeat = false;                    // when we get the heartbeat back
+    }
+
+  sei();                                   // enable interrupts when youre done!
+}// end isr
