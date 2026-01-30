@@ -1,0 +1,150 @@
+#include "SoftwareSerial.h"
+#include "DFRobotDFPlayerMini.h"
+
+// Use pins 2 and 3 to communicate with DFPlayer Mini
+static const uint8_t PIN_MP3_TX = 2; // Connects to module's RX
+static const uint8_t PIN_MP3_RX = 3; // Connects to module's TX
+SoftwareSerial softwareSerial(PIN_MP3_RX, PIN_MP3_TX);
+int flag1=0,flag2=0,flag3=0,flag4=0,flag5=0,flag6=0,flag7=0,flag8=0;
+// Create the Player object
+DFRobotDFPlayerMini player;
+int thumb;
+int first_finger;
+int fourth_finger;
+void setup() {
+  pinMode(A0, INPUT);
+  pinMode(A1, INPUT);
+  pinMode(A2, INPUT);
+
+  // Init USB serial port for debugging
+  Serial.begin(9600);
+  // Init serial port for DFPlayer Mini
+  softwareSerial.begin(9600);
+
+  // Start communication with DFPlayer Mini
+  if (player.begin(softwareSerial)) {
+    Serial.println("OK");
+
+    // Set volume to maximum (0 to 30).
+    player.volume(30);
+    // Play the first MP3 file on the SD card
+
+  }
+  else {
+    Serial.println("Connecting to DFPlayer Mini failed!");
+  }
+}
+
+void loop() {
+  thumb = analogRead(A0);
+  first_finger = analogRead(A1);
+  fourth_finger = analogRead(A2);
+  Serial.print("thumb :");
+  Serial.print(thumb);
+ 
+  Serial.print(" first_finger :");
+  Serial.print(first_finger);
+
+  Serial.print(" fourth_finger :");
+  Serial.println(fourth_finger);
+
+
+    if (thumb <= 15 && first_finger < 200 && fourth_finger < 200 && flag1==0) {
+      Serial.println("It's Ok");
+      player.play(6);
+      flag1=1;
+      flag2=0;
+      flag3=0;
+      flag4=0;
+      flag5=0;
+      flag6=0;
+      flag7=0;
+      flag8=0;
+      delay(1000);
+    } if (thumb <= 15 && first_finger >= 210 && fourth_finger < 200 && flag2==0) {
+      Serial.println("HELP ME");
+      player.play(12);
+      flag1=0;
+      flag2=1;
+      flag3=0;
+      flag4=0;
+      flag5=0;
+      flag6=0;
+      flag7=0;
+      flag8=0;
+      delay(1000);
+    } if (thumb <= 15 && first_finger >= 210 && fourth_finger >= 210 && flag3==0) {
+      Serial.println("LOVE YOU");
+      player.play(2);
+      flag1=0;
+      flag2=0;
+      flag3=1;
+      flag4=0;
+      flag5=0;
+      flag6=0;
+      flag7=0;
+      flag8=0;
+      delay(1000);
+    } if (thumb >20 && first_finger >= 210 && fourth_finger < 200 && flag4==0) {
+      Serial.println("EXCUSE ME");
+      player.play(11);
+      flag1=0;
+      flag2=0;
+      flag3=0;
+      flag4=1;
+      flag5=0;
+      flag6=0;
+      flag7=0;
+      flag8=0;
+      delay(1000);
+    } if (thumb > 20 && first_finger >= 210 && fourth_finger >= 210 && flag5==0) {
+      Serial.println("HELLO");
+      player.play(9);
+      flag1=0;
+      flag2=0;
+      flag3=0;
+      flag4=0;
+      flag5=1;
+      flag6=0;
+      flag7=0;
+      flag8=0;
+      delay(1000);
+    } if (thumb > 20 && first_finger < 200 && fourth_finger < 200 && flag6==0) {
+      Serial.println("SORRY");
+      player.play(10);
+      flag1=0;
+      flag2=0;
+      flag3=0;
+      flag4=0;
+      flag5=0;
+      flag6=1;
+      flag7=0;
+      flag8=0;
+      delay(1000);
+    } if (thumb > 20 && first_finger < 200 && fourth_finger >= 210 && flag7==0) {
+      Serial.println("WASHROOM");
+      player.play(1);
+      flag1=0;
+      flag2=0;
+      flag3=0;
+      flag4=0;
+      flag5=0;
+      flag6=0;
+      flag7=1;
+      flag8=0;
+      delay(1000);
+    } if (thumb <= 15 && first_finger < 200 && fourth_finger >= 210 && flag8==0) {
+      Serial.println("THANKYOU");
+      player.play(13);
+      flag1=0;
+      flag2=0;
+      flag3=0;
+      flag4=0;
+      flag5=0;
+      flag6=0;
+      flag7=0;
+      flag8=1;
+      
+      delay(1000);
+    } 
+}
